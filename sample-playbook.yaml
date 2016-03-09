@@ -1,0 +1,8 @@
+- hosts: ec2-tests
+
+  tasks:
+  - name: lets run ifconfig
+    shell: ls -l /
+    register: result
+
+  - debug: var=result
