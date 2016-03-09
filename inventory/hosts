@@ -1,2 +1,2 @@
 [ec2-tests]
-52.34.223.16    ansible_user=ec2-user
+52.37.193.143    ansible_user=ec2-user ansible_connection=awsrun

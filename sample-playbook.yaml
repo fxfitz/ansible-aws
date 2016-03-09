@@ -1,5 +1,8 @@
 - hosts: ec2-tests
 
+  vars:
+    ansible_connection: awsrun
+
   tasks:
   - name: lets run ls
     shell: ls -l /
