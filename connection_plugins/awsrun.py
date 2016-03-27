@@ -20,6 +20,7 @@ import time
 import base64
 from ansible.errors import AnsibleError
 from ansible.plugins.connection import ConnectionBase
+from ansible.utils.vars import combine_vars
 
 try:
     import boto3
@@ -182,7 +183,8 @@ class Connection(ConnectionBase):
         display.vvv("FETCH {} -> {}".format(in_path, out_path))
 
     def set_host_overrides(self, host):
-        ip = '52.37.193.143'
+        host_vars = combine_vars(host.get_group_vars(), host.get_vars())
+        ip = host_vars['inventory_hostname']
         self._instance_id = self._ip_to_instance_id(ip)
 
     def close(self):
