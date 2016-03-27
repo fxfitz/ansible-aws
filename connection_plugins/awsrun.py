@@ -15,23 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import (absolute_import, division, print_function)
-__metaclass__ = type
-
 import os
-import shutil
-import subprocess
-import select
-import fcntl
-import getpass
 import time
-
-from ansible.compat.six import text_type, binary_type
-
-import ansible.constants as C
-
-from ansible.errors import AnsibleError, AnsibleFileNotFound
+import base64
+from ansible.errors import AnsibleError
 from ansible.plugins.connection import ConnectionBase
-from ansible.utils.unicode import to_bytes, to_str
 
 try:
     import boto3
@@ -56,7 +44,8 @@ class Connection(ConnectionBase):
         return 'awsrun'
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
-        super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
+        super(Connection, self).__init__(play_context, new_stdin,
+                                         *args, **kwargs)
         self._connect()
 
     def _connect(self):
@@ -64,7 +53,7 @@ class Connection(ConnectionBase):
 
         # TODO: Make this more ansible-like
         _AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
-        _AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+        _AWS_SECRET = os.environ['AWS_SECRET_ACCESS_KEY']
         _AWS_REGION_NAME = os.environ['AWS_REGION_NAME']
 
         if not self._connected:
@@ -73,8 +62,9 @@ class Connection(ConnectionBase):
             display.vvv("AWS_REGION_NAME: {}".format(_AWS_REGION_NAME))
 
             self._session = boto3.Session(aws_access_key_id=_AWS_ACCESS_KEY_ID,
-                                          aws_secret_access_key=_AWS_SECRET_ACCESS_KEY,
+                                          aws_secret_access_key=_AWS_SECRET,
                                           region_name=_AWS_REGION_NAME)
+
             self._ssm = self._session.client('ssm')
             self._ec2 = self._session.resource('ec2')
             self._connected = True
@@ -93,7 +83,7 @@ class Connection(ConnectionBase):
     def _exec_command(self, cmd, instance_id):
         # TODO: Windows, or linux? Hmmmmm
         display.vvv("Sending cmd to SSM Instance {}: {}".format(instance_id,
-                                                                cmd))
+                                                                len(cmd)))
         resp = self._ssm.send_command(InstanceIds=[instance_id],
                                       DocumentName='AWS-RunShellScript',
                                       TimeoutSeconds=60,
@@ -123,8 +113,9 @@ class Connection(ConnectionBase):
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         ''' run a command on the local host '''
-        super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
-
+        super(Connection, self).exec_command(cmd, in_data=in_data,
+                                             sudoable=sudoable)
+        display.vvv("EXEC {}".format(cmd))
 
         command_id = self._exec_command(cmd, self._instance_id)
         result = self._get_command_results(command_id)
@@ -134,6 +125,17 @@ class Connection(ConnectionBase):
     def put_file(self, in_path, out_path):
         super(Connection, self).put_file(in_path, out_path)
         display.vvv("PUT {} -> {}".format(in_path, out_path))
+
+        with open(in_path, 'rb') as in_file:
+            # Oh yeaaaah, we're doing it this way since its a POC. WUT WUT!
+            # :micdrop:
+            encoded_in_file = base64.b64encode(in_file.read())
+
+        cmd = "echo -n '{}' | base64 --decode > {}".format(encoded_in_file,
+                                                           out_path)
+        command_id = self._exec_command(cmd, self._instance_id)
+        result = self._get_command_results(command_id)
+        return result
 
     def fetch_file(self, in_path, out_path):
         super(Connection, self).fetch_file(in_path, out_path)
