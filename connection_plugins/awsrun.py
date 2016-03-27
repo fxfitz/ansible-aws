@@ -27,6 +27,11 @@ except ImportError:
     raise AnsibleError("boto3 is not installed")
 
 try:
+    import HTMLParser as htmlparser
+except ImportError:
+    import html.parser as htmlparser
+
+try:
     from __main__ import display
 except ImportError:
     from ansible.utils.display import Display
@@ -46,6 +51,7 @@ class Connection(ConnectionBase):
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(Connection, self).__init__(play_context, new_stdin,
                                          *args, **kwargs)
+        self._html_parser = htmlparser.HTMLParser()
         self._connect()
 
     def _connect(self):
@@ -97,45 +103,60 @@ class Connection(ConnectionBase):
         # What about timeouts?
         # What about other statuses other than success? Like an error?
         while commands['CommandInvocations'][0]['Status'] != 'Success':
+            status = commands['CommandInvocations'][0]['Status']
+
+            if status == 'Failed':
+                display.vvv("COMMAND FAILED!")
+                break
+
             display.vvv("Command is not yet complete. Waiting a bit...")
+            display.vvvv("CURRENT STATUS: {}".format(status))
             time.sleep(.25)
             commands = self._ssm.list_command_invocations(CommandId=command_id,
                                                           Details=True)
 
         display.vvv("Command is done!")
         details = commands['CommandInvocations'][0]['CommandPlugins'][0]
-        result_code = details['ResponseCode']
-        result_output = details['Output']
-        display.vvv("Result Code: {}".format(result_code))
-        display.vvv("Result Output: {}".format(result_output))
-        # No stderr? Hmm.
-        return (result_code, result_output)
+
+        result_output = self._html_parser.unescape(details.get('Output', ''))
+        result_code = details.get('ResponseCode')
+        result_error = ''  # Unsupported; how do I get stderr?
+        result = (result_code, result_output, result_error)
+
+        display.vvvv('Result: {}'.format(result))
+        return (result_code, result_output, result_error)
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         ''' run a command on the local host '''
-        super(Connection, self).exec_command(cmd, in_data=in_data,
+        super(Connection, self).exec_command(cmd,
+                                             in_data=in_data,
                                              sudoable=sudoable)
         display.vvv("EXEC {}".format(cmd))
-
         command_id = self._exec_command(cmd, self._instance_id)
         result = self._get_command_results(command_id)
 
-        return (result[0], result[1], '')
+        return result
 
     def put_file(self, in_path, out_path):
         super(Connection, self).put_file(in_path, out_path)
         display.vvv("PUT {} -> {}".format(in_path, out_path))
 
-        with open(in_path, 'rb') as in_file:
-            # Oh yeaaaah, we're doing it this way since its a POC. WUT WUT!
-            # :micdrop:
-            encoded_in_file = base64.b64encode(in_file.read())
+        # Lets make sure we're not appending to an already existing file
+        self.exec_command('rm -rf {}'.format(out_path))
 
-        cmd = "echo -n '{}' | base64 --decode > {}".format(encoded_in_file,
-                                                           out_path)
-        command_id = self._exec_command(cmd, self._instance_id)
-        result = self._get_command_results(command_id)
-        return result
+        display.vvv("Starting to read file...")
+        with open(in_path, 'rb') as in_file:
+            while True:
+                result = False
+                chunk = in_file.read(20000)  # because this seems to work
+                if not chunk:
+                    return result
+
+                encoded_chunk = base64.b64encode(chunk)
+                chunk_command = "echo -n '{}' | base64 --decode >> {}"
+
+                result = self.exec_command(chunk_command.format(encoded_chunk,
+                                                                out_path))
 
     def fetch_file(self, in_path, out_path):
         super(Connection, self).fetch_file(in_path, out_path)
