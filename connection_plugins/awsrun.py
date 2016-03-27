@@ -64,9 +64,9 @@ class Connection(ConnectionBase):
         _AWS_REGION_NAME = os.environ['AWS_REGION_NAME']
 
         if not self._connected:
-            display.vvv("Connecting to AWS SSM")
-            display.vvv("AWS_ACCESS_KEY_ID: {}".format(_AWS_ACCESS_KEY_ID))
-            display.vvv("AWS_REGION_NAME: {}".format(_AWS_REGION_NAME))
+            display.vv("Connecting to AWS SSM")
+            display.vv("AWS_ACCESS_KEY_ID: {}".format(_AWS_ACCESS_KEY_ID))
+            display.vv("AWS_REGION_NAME: {}".format(_AWS_REGION_NAME))
 
             self._session = boto3.Session(aws_access_key_id=_AWS_ACCESS_KEY_ID,
                                           aws_secret_access_key=_AWS_SECRET,
@@ -76,7 +76,7 @@ class Connection(ConnectionBase):
             self._ec2 = self._session.resource('ec2')
             self._s3 = self._session.resource('s3')
             self._connected = True
-            display.debug("Connected!")
+            display.vv("Connected!")
 
         return self
 
@@ -191,4 +191,4 @@ class Connection(ConnectionBase):
         ''' terminate the connection; nothing to do here '''
         self._client = None
         self._connected = False
-        display.debug("The connection has been closed")
+        display.vv("The connection has been closed")
