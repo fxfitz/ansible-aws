@@ -90,8 +90,8 @@ class Connection(ConnectionBase):
 
     def _exec_command(self, cmd, instance_id):
         # TODO: Windows, or linux? Hmmmmm
-        display.vvv("Sending cmd to SSM Instance {}: {}".format(instance_id,
-                                                                len(cmd)))
+        display.vvvv("Sending cmd to SSM Instance {}: {}".format(instance_id,
+                                                                 cmd))
         resp = self._ssm.send_command(InstanceIds=[instance_id],
                                       DocumentName='AWS-RunShellScript',
                                       TimeoutSeconds=60,
@@ -110,16 +110,16 @@ class Connection(ConnectionBase):
             status = commands['CommandInvocations'][0]['Status']
 
             if status == 'Failed':
-                display.vvv("COMMAND FAILED!")
+                display.debug("COMMAND FAILED!")
                 break
 
-            display.vvv("Command is not yet complete. Waiting a bit...")
+            display.vvvv("Command is not yet complete. Waiting a bit...")
             display.vvvv("CURRENT STATUS: {}".format(status))
             time.sleep(.25)
             commands = self._ssm.list_command_invocations(CommandId=command_id,
                                                           Details=True)
 
-        display.vvv("Command is done!")
+        display.vvvv("Command is done!")
         details = commands['CommandInvocations'][0]['CommandPlugins'][0]
         result_code = details.get('ResponseCode')
 
@@ -151,7 +151,7 @@ class Connection(ConnectionBase):
         super(Connection, self).exec_command(cmd,
                                              in_data=in_data,
                                              sudoable=sudoable)
-        display.vvv("EXEC {}".format(cmd))
+        display.vvv("EXEC length {}".format(len(cmd)))
         command_id = self._exec_command(cmd, self._instance_id)
         result = self._get_command_results(command_id)
 
@@ -164,7 +164,7 @@ class Connection(ConnectionBase):
         # Lets make sure we're not appending to an already existing file
         self.exec_command('rm -rf {}'.format(out_path))
 
-        display.vvv("Starting to read file...")
+        display.vvvv("Starting to read file...")
         with open(in_path, 'rb') as in_file:
             while True:
                 result = False
