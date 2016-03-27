@@ -73,6 +73,7 @@ class Connection(ConnectionBase):
 
             self._ssm = self._session.client('ssm')
             self._ec2 = self._session.resource('ec2')
+            self._s3 = self._session.resource('s3')
             self._connected = True
             display.debug("Connected!")
 
@@ -93,8 +94,10 @@ class Connection(ConnectionBase):
         resp = self._ssm.send_command(InstanceIds=[instance_id],
                                       DocumentName='AWS-RunShellScript',
                                       TimeoutSeconds=60,
-                                      Parameters={'commands': [cmd]})
+                                      Parameters={'commands': [cmd]},
+                                      OutputS3BucketName='ansibleaws-test')
         command_id = resp['Command']['CommandId']
+        display.vvvv("COMMAND ID: {}".format(command_id))
         return command_id
 
     def _get_command_results(self, command_id):
@@ -117,10 +120,26 @@ class Connection(ConnectionBase):
 
         display.vvv("Command is done!")
         details = commands['CommandInvocations'][0]['CommandPlugins'][0]
-
-        result_output = self._html_parser.unescape(details.get('Output', ''))
         result_code = details.get('ResponseCode')
-        result_error = ''  # Unsupported; how do I get stderr?
+
+        location = '{}/{}/awsrunShellScript/0.aws:runShellScript'
+        location = location.format(command_id, self._instance_id)
+        display.vvvv("Output location: {}".format(location))
+
+        try:
+            stdout_key = self._s3.Object(bucket_name='ansibleaws-test',
+                                         key='{}/stdout'.format(location))
+            result_output = stdout_key.get()['Body'].read()
+        except:
+            result_output = ''
+
+        try:
+            stderr_key = self._s3.Object(bucket_name='ansibleaws-test',
+                                         key='{}/stderr'.format(location))
+            result_error = stderr_key.get()['Body'].read()
+        except:
+            result_error = ''
+
         result = (result_code, result_output, result_error)
 
         display.vvvv('Result: {}'.format(result))
